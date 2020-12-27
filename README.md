@@ -24,4 +24,4 @@ data? Could you decompose this time series into various components? Is the data 
 
 We worked as a group of 6 students, the team is as follows: Abdul Salim, V.Aravindan, Bhoomi Sawant, Dhruv Patel, Abhinava Arasada, Mohit Jangir.
 
-To view the complete report, please open the file **ASM_final.pdf**, R was the primary language used for our experiments
+To view the complete report, please open the file **ASM_report.pdf**, R was the primary language used for our experiments
