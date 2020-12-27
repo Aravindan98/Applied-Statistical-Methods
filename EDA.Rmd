@@ -1,0 +1,321 @@
+---
+title: "ASM-Time-Series"
+author: "Abdul"
+date: "17/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1. Loading the required libraries
+```{r}
+library("stats")
+library("astsa")
+library("forecast")
+library("dplyr")
+library("tseries")
+library("ggpubr")
+library("fitdistrplus")
+
+```
+
+2. Loading Data from CSV file
+```{r}
+setwd("E:/ASM Final Data")
+data=read.csv("MP.csv")
+windspeed=ts(data$Wind.Speed)
+year=data$Year
+month=data$Month
+day=data$Day
+```
+```{r}
+summary(data)
+```
+
+3. Checking for Distribution of Data
+```{r}
+#Checking for Distribution
+DisributionCheck = data$Wind.Speed
+png(filename = paste(root, "Histogram", ".png", sep = ""), width = 720, height = 500)
+hist(DisributionCheck, xlab='WindSpeed', main='Histogram', freq=F, col='yellow', breaks = 500)
+lines(density(DisributionCheck), col='red', lwd=5)
+dev.off()
+```
+
+4. Density Plot
+```{r}
+png(filename = paste(root, "Density", ".png", sep = ""), width = 720, height = 500)
+ggdensity(DisributionCheck, 
+          main = "Density Plot",
+          xlab = "WindSpeed")
+dev.off()
+```
+
+5. Checking for Normality
+```{r}
+png(filename = paste(root, "qqplot", ".png", sep = ""), width = 720, height = 500)
+ggqqplot(DisributionCheck)
+dev.off()
+
+ks.test(DisributionCheck, "pnorm", mean=mean(DisributionCheck), sd=sd(DisributionCheck))
+jarque.bera.test(DisributionCheck)
+```
+6. Fitting a Distribution to our Dataset
+```{r}
+descdist((DisributionCheck), discrete = FALSE)
+
+# fit distributions on the data 
+A<-fitdist(DisributionCheck, 'weibull')
+(fitdistr(DisributionCheck, 'weibull'))
+plot(A)
+
+B<-fitdist(DisributionCheck, 'lnorm') 
+C<-fitdist(DisributionCheck, 'gamma') 
+D<-fitdist(DisributionCheck, 'exp') 
+
+#plot the data 
+par(mfrow=c(1,1.5)) 
+a<-c("Weibull","lognormal","gamma", "exponential") 
+png(filename = paste(root, "FitDistribution", ".png", sep = ""), width = 720, height = 500)
+denscomp(list(A,B,C,D),legendtext = a) 
+dev.off()
+
+cdfcomp(list(A,B,C,D),legendtext=a) 
+qqcomp(list(A,B,C,D),legendtext=a)
+```
+
+
+
+ACTUAL TIME SERIES ANALYSIS STARTS HERE...
+
+
+7. Grouping by Day and Month
+```{r}
+monthly_data = data %>% group_by(Year, Month) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+inds_m <- seq(as.Date("2000-01-01"), as.Date("2014-12-31"), by = "month")
+windspeed_monthly_ns = ts(monthly_data$windspeed, start = c(2000, as.numeric(format(inds_m[1], "%j"))), frequency = 12)
+
+#Grouping by day
+daily_data = data %>% group_by(Year,Month,Day) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+inds <- seq(as.Date("2000-01-01"), as.Date("2014-12-31"), by = "day")
+windspeed_daily_ns = ts(daily_data$windspeed, start = c(2000, as.numeric(format(inds[1], "%j"))), frequency = 365)
+```
+
+8. Plotting Daily and Monthly Time Series(Non Stationary)
+```{r}
+#Time series log plots
+par(mfrow = c(2,1))
+png(filename = paste(root, "MonthlyNS", ".png", sep = ""), width = 720, height = 340)
+plot.ts(windspeed_monthly_ns, xlab = "Year", ylab = "Windspeed", main = "Logarithmic Monthly Average Time Series")
+dev.off()
+
+png(filename = paste(root, "DailyNS", ".png", sep = ""), width = 720, height = 340)
+plot.ts(windspeed_daily_ns, xlab = "Year", ylab = "Windspeed", main = "Logarithmic Daily Average Time Series")
+dev.off()
+```
+
+9. Custom ACF and PACF functions
+```{r}
+plot.acf <- function(ACFobj) {
+    rr <- ACFobj$acf[-1]
+    kk <- length(rr)
+    nn <- ACFobj$n.used
+    plot(seq(kk), rr, type = "h", lwd = 2, yaxs = "i", xaxs = "i", 
+        ylim = c(floor(min(rr)), 1), xlim = c(0, kk + 1), xlab = "Lag", 
+        ylab = "Correlation", las = 1)
+    abline(h = -1/nn + c(-2, 2)/sqrt(nn), lty = "dashed", col = "blue")
+    abline(h = 0)
+}
+
+plot.pacf <- function(PACFobj) {
+    rr <- PACFobj$acf
+    kk <- length(rr)
+    nn <- PACFobj$n.used
+    plot(seq(kk), rr, type = "h", lwd = 2, yaxs = "i", xaxs = "i", 
+        ylim = c(floor(min(rr)), 1), xlim = c(0, kk + 1), xlab = "Lag", 
+        ylab = "PACF", las = 1)
+    abline(h = -1/nn + c(-2, 2)/sqrt(nn), lty = "dashed", col = "blue")
+    abline(h = 0)
+}
+```
+
+10. Creating a Stationary Time Series by Differencing (Monthly Data)
+```{r}
+############################# MONTHLY #######################################
+
+plot.ts(windspeed_monthly_ns, xlab = "Year", ylab = "Windspeed", main = "Monthly Average Time Series")
+
+#Both tests show that data is stationary with respect to trend
+adf.test(windspeed_monthly_ns)
+kpss.test(windspeed_monthly_ns, null = "Level")
+
+#We do not need any first difference
+ndiffs(windspeed_monthly_ns, test = "adf")
+ndiffs(windspeed_monthly_ns, test = "kpss")
+
+#We need one seasonal difference
+windspeed_monthly_ns %>% log() %>% nsdiffs()
+windspeed_monthly_ns %>% log() %>% diff(lag = 12) %>% ndiffs()
+
+
+## Create a stationary time series object
+windspeed_monthly_s <- ts(diff(log(monthly_data$windspeed), lag = 12),     # random data
+           start = c(2000, as.numeric(format(inds_m[1], "%j"))),
+           frequency = 12)
+```
+
+
+12. Plotting the Stationary Time Series, ACF and PACF plots (Monthly Data)
+```{r}
+png(filename = paste(root, "MonthlyS", ".png", sep = ""), width = 720, height = 340)
+plot.ts(windspeed_monthly_s, xlab = "Year", ylab = "Windspeed", main = "Monthly Average Time Series(Stationary)")
+dev.off()
+par(mfrow = c(2,1))
+
+png(filename = paste(root, "ACF_monthly", ".png", sep = ""), width = 720, height = 340)
+plot.acf(acf(windspeed_monthly_s, plot = FALSE)) #MA(2) model
+dev.off()
+
+png(filename = paste(root, "PACF_monthly", ".png", sep = ""), width = 720, height = 340)
+plot.pacf(pacf(windspeed_monthly_s, plot = FALSE)) #AR(1) model
+dev.off()
+```
+
+
+13. Fitting the MA Model (Monthly Data)
+```{r}
+############################## MONTHLY #######################################
+
+#Fitting MA model
+#q values = 1, 2, 3
+par(mfrow = c(1,3))
+(ma_fit_1 = Arima(windspeed_monthly_s, order=c(0,0,1)))
+(ma_fit_2 = Arima(windspeed_monthly_s, order=c(0,0,2))) #Best
+(ma_fit_3 = Arima(windspeed_monthly_s, order=c(0,0,3)))
+```
+
+14. Plotting the Best MA Model Forecast (Monthly Data)
+```{r}
+png(filename = paste(root, "Residuals_monthly_MA", ".png", sep = ""), width = 720, height = 500)
+checkresiduals(ma_fit_3)
+dev.off()
+
+png(filename = paste(root, "Forecast_monthly_MA", ".png", sep = ""), width = 720, height = 500)
+autoplot(forecast(ma_fit_3))
+dev.off()
+x = forecast(ma_fit_3)
+x
+pred <- predict(ma_fit_3, n.ahead = 12)
+pred
+ts.plot(ts(monthly_data$windspeed), 2.718^pred$pred, log = "y", lty = c(1,3))
+```
+
+15. Fitting the AR Model (Monthly Data)
+```{r}
+#Fitting AR model
+#p values = 1, 2, 3
+par(mfrow = c(1,3))
+(ar_fit_1 <- Arima(windspeed_monthly_s, order=c(1,0,0)))
+(ar_fit_2 <- Arima(windspeed_monthly_s, order=c(2,0,0)))
+(ar_fit_3 <- Arima(windspeed_monthly_s, order=c(3,0,0)))
+```
+
+16. Plotting the Best AR Model Forecast (Monthly Data)
+```{r}
+png(filename = paste(root, "Residuals_monthly_AR", ".png", sep = ""), width = 720, height = 500)
+checkresiduals(ar_fit_1)
+dev.off()
+
+png(filename = paste(root, "Forecast_monthly_AR", ".png", sep = ""), width = 720, height = 500)
+autoplot(forecast(ar_fit_1))
+dev.off()
+```
+11. Creating a Stationary Time Series by Differencing (Daily Data)
+```{r}
+############################## DAILY #######################################
+plot.ts(windspeed_daily_ns, xlab = "Year", ylab = "Windspeed", main = "Daily Average Time Series")
+
+#Both tests show that data is stationary with respect to trend
+adf.test(diffinv(windspeed_daily_ns))
+kpss.test(diffinv(windspeed_daily_ns), null = "Level")
+
+#We do not need any first difference
+ndiffs(windspeed_daily_ns, test = "adf")
+ndiffs(windspeed_daily_ns, test = "kpss")
+
+#We need one seasonal difference
+windspeed_daily_ns %>% nsdiffs()
+windspeed_daily_ns %>% diff(lag = 366) %>% ndiffs()
+
+
+## Create a time series object
+windspeed_daily_s <- ts(diff(log(daily_data$windspeed), lag = 366),     # random data
+           start = c(2000, as.numeric(format(inds[1], "%j"))),
+           frequency = 365)
+```
+
+
+17. Plotting the Stationary Time Series, ACF and PACF plots (Daily Data)
+```{r}
+png(filename = paste(root, "DailyS", ".png", sep = ""), width = 720, height = 500)
+plot.ts(windspeed_daily_s, xlab = "Year", ylab = "Windspeed", main = "Daily Average Time Series(Stationary)")
+dev.off()
+
+par(mfrow = c(2,1))
+png(filename = paste(root, "ACF_daily", ".png", sep = ""), width = 720, height = 500)
+plot.acf(acf(windspeed_daily_s, plot = FALSE)) #MA(2) model
+dev.off()
+png(filename = paste(root, "PACF_daily", ".png", sep = ""), width = 720, height = 500)
+plot.pacf(pacf(windspeed_daily_s, plot = FALSE)) #AR(2) model
+dev.off()
+
+```
+
+
+18. Fitting the MA Model (Daily Data)
+```{r}
+############################## DAILY #######################################
+
+
+#Fitting MA model
+#q values = 1, 2, 3, 4, 5
+par(mfrow = c(1,3))
+(ma_fit_1 = Arima(windspeed_daily_s, order=c(0,0,1)))
+(ma_fit_2 = Arima(windspeed_daily_s, order=c(0,0,2))) 
+(ma_fit_3 = Arima(windspeed_daily_s, order=c(0,0,3))) #Best
+```
+
+19. Plotting the Best MA Model Forecast (Daily Data)
+```{r}
+png(filename = paste(root, "Residuals_daily_MA", ".png", sep = ""), width = 720, height = 500)
+checkresiduals(ma_fit_3)
+dev.off()
+
+png(filename = paste(root, "Forecast_daily_MA", ".png", sep = ""), width = 720, height = 500)
+autoplot(forecast(ma_fit_3))
+dev.off()
+```
+
+20. Fitting the AR Model (Daily Data)
+```{r}
+#Fitting AR model
+#p values = 1, 2, 3
+par(mfrow = c(1,3))
+(ar_fit_1 <- Arima(windspeed_daily_s, order=c(1,0,0))) 
+(ar_fit_2 <- Arima(windspeed_daily_s, order=c(2,0,0))) #Best
+(ar_fit_3 <- Arima(windspeed_daily_s, order=c(3,0,0)))
+```
+
+21. Plotting the Best AR Model Forecast (Daily Data)
+```{r}
+png(filename = paste(root, "Residuals_daily_AR", ".png", sep = ""), width = 720, height = 500)
+checkresiduals(ar_fit_2)
+dev.off()
+
+png(filename = paste(root, "Forecast_daily_AR", ".png", sep = ""), width = 720, height = 500)
+plot(forecast(ar_fit_2), xlim = (c(2014, 2015)))
+dev.off()
+```
+

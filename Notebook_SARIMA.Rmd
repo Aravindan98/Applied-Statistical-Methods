@@ -1,0 +1,152 @@
+---
+title: "Untitled"
+author: "Aravindan"
+date: "17/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library("astsa")
+library("forecast")
+library("dplyr")
+library("xts")
+library("lubridate")
+setwd("E:/ASM Final Data")
+data=read.csv("MP.csv")
+TN=read.csv("Tamil Nadu.csv")
+AP=read.csv("Andhra Pradesh.csv")
+MP=read.csv("MP.csv")
+RA=read.csv("Rajasthan.csv")
+```
+```{r}
+data=TN
+windspeed=ts(data$Wind.Speed)
+year=data$Year
+month=data$Month
+day=data$Day
+time=as.Date(ymd(paste(data$Year,monthly_data$Month,"15",sep="-")))
+monthly_data_tn=data %>% group_by(Year,Month) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+daily_data_tn=data %>% group_by(Year,Month,Day) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+
+data=AP
+windspeed=ts(data$Wind.Speed)
+year=data$Year
+month=data$Month
+day=data$Day
+time=as.Date(ymd(paste(data$Year,monthly_data$Month,"15",sep="-")))
+monthly_data_ap=data %>% group_by(Year,Month) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+daily_data_ap=data %>% group_by(Year,Month,Day) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+
+data=RA
+windspeed=ts(data$Wind.Speed)
+year=data$Year
+month=data$Month
+day=data$Day
+time=as.Date(ymd(paste(data$Year,monthly_data$Month,"15",sep="-")))
+monthly_data_ra=data %>% group_by(Year,Month) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+daily_data_ra=data %>% group_by(Year,Month,Day) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+
+data=MP
+windspeed=ts(data$Wind.Speed)
+year=data$Year
+month=data$Month
+day=data$Day
+time=as.Date(ymd(paste(data$Year,monthly_data$Month,"15",sep="-")))
+monthly_data_mp=data %>% group_by(Year,Month) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+daily_data_mp=data %>% group_by(Year,Month,Day) %>% summarize(windspeed=mean(Wind.Speed,na.rm=T))
+```
+```{r}
+ind <- seq(as.Date("2000-01-01"), as.Date("2014-12-31"), by = "month")
+df=data.frame(ind,monthly_data_ap$windspeed,monthly_data_mp$windspeed,monthly_data_ra$windspeed,monthly_data_tn$windspeed)
+```
+
+```{r}
+boxplot(monthly_data_ap$windspeed, monthly_data_mp$windspeed, monthly_data_ra$windspeed, monthly_data_tn$windspeed,
+main = "Windspeeds of States",
+at = c(1,2,3,4),
+names = c("AP", "MP", "RA", "TN"),
+las = 2,
+col = c("orange","red"),
+horizontal = FALSE,
+notch = T
+)
+```
+```{r}
+summary(df)
+```
+
+```{r}
+ws=diff(monthly_data_ap$windspeed,12)
+tsdisplay(ws)
+```
+
+```{r}
+tsdisplay(monthly_data$windspeed)
+ws=monthly_data$windspeed
+par(mfrow=c(1,1))
+acf(ws,100)
+pacf(ws,100)
+```
+
+
+```{r}
+#AR coefficients 1,2,3
+#MA coefficients 1,2
+aic101=sarima(ws,1,0,1,0,1,1,12)$AIC
+aic102=sarima(ws,1,0,2,0,1,1,12)$AIC
+aic201=sarima(ws,2,0,1,0,1,1,12)$AIC
+aic202=sarima(ws,2,0,2,0,1,1,12)$AIC
+aic301=sarima(ws,3,0,1,0,1,1,12)$AIC
+aic302=sarima(ws,3,0,2,0,1,1,12)$AIC
+
+aic111=sarima(ws,1,1,1,0,1,1,12)$AIC
+aic112=sarima(ws,1,1,2,0,1,1,12)$AIC
+aic211=sarima(ws,2,1,1,0,1,1,12)$AIC
+aic212=sarima(ws,2,1,2,0,1,1,12)$AIC
+aic311=sarima(ws,3,1,1,0,1,1,12)$AIC
+aic312=sarima(ws,3,1,2,0,1,1,12)$AIC
+```
+
+```{r}
+c(aic101,aic102,aic201,aic202,aic301,aic302,aic111,aic112,aic211,aic212,aic311,aic312)
+```
+
+```{r}
+model=arima(x=monthly_data_ra$windspeed[1:150],order=c(3,0,1),seasonal=list(order=c(0,1,1),period=12)) #for monthly data 
+ind <- seq(as.Date("2000-01-01"), as.Date("2014-12-31"), by = "month")
+
+png("figures/Rajasthan_SARIMA_forecast.png")
+plot(forecast(model,30), main="Rajasthan SARIMA forecast")
+dev.off()
+
+#plot(monthly_data$windspeed,type="l",col="red")
+fc=forecast(model,30)
+ind <- seq(as.Date("2012-07-01"), as.Date("2014-12-31"), by = "month")
+
+png("figures/Rajasthan_SARIMA_test.png")
+plot(x=ind,y=fc$mean,type="l",col="blue", main="Rajasthan SARIMA Testing")
+lines(x=ind,y=monthly_data_ra$windspeed[151:180],col="red")
+legend("topleft",c("predicted","Actual"),fill=c("blue","red"))
+dev.off()
+
+accuracy(fc$mean,monthly_data_ra$windspeed[151:180])
+```
+```{r}
+plot(model$residuals)
+```
+```{r}
+png("SARIMA residuals.png")
+sarima(ws,3,0,1,0,1,1,12)
+dev.off()
+```
+
+
+```{r}
+model
+```
+
